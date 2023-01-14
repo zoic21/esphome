@@ -39,7 +39,6 @@ ethernet:
   mdio_pin: GPIO18
   clk_mode: GPIO17_OUT
   phy_addr: 0
-  use_address: 192.168.1.133
   
 mqtt:
   broker: !secret mqtt_ip
