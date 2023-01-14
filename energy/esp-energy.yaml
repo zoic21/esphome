@@ -1,0 +1,101 @@
+esphome:
+  name: esp-energy
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+# Enable logging
+logger:
+
+web_server:
+  port: 80
+  auth:
+   username: admin
+   password: !secret web_server_password
+
+ota:
+  password: !secret ota_password
+
+ethernet:
+  type: LAN8720
+  mdc_pin: GPIO23
+  mdio_pin: GPIO18
+  clk_mode: GPIO17_OUT
+  phy_addr: 0
+  
+mqtt:
+  broker: !secret mqtt_ip
+  username : !secret mqtt_username
+  password : !secret mqtt_password
+  birth_message:
+    topic: esp-energy/status
+    payload: online
+  will_message:
+    topic: esp-energy/status
+    payload: offline
+
+text_sensor:
+  - platform: version
+    name: "Firmware control"
+    
+time:
+  - platform: sntp
+    servers: !secret ntp_ip
+    on_time_sync:
+      then:
+        - logger.log: "Synchronized system clock"
+    on_time:
+      - minutes: 0
+        hours: 0
+        then:
+          - logger.log: "Reset counter"
+          - pulse_meter.set_total_pulses:
+              id: "water"
+              value: 0
+          - pulse_meter.set_total_pulses:
+              id: "gas"
+              value: 0
+
+sensor:
+ - platform: pulse_meter
+   pin:
+      number: 13
+      mode: INPUT_PULLUP
+   id: "water"
+   name: "Instant water consumption"
+   unit_of_measurement: "L/min"
+   timeout: 60s
+   internal_filter: 50ms
+   accuracy_decimals: 2
+   filters:
+    - lambda: return x;
+   total:
+    name: "Total water consumption"
+    unit_of_measurement: "m³"
+    device_class: "water"
+    accuracy_decimals: 2
+    filters:
+    - lambda: return (x * 0.001);
+
+ - platform: pulse_meter
+   pin:
+      number: 14
+      mode: INPUT_PULLUP
+   id: "gas"
+   name: "Instant gas consumption"
+   unit_of_measurement: "L/min"
+   timeout: 60s
+   internal_filter: 200ms
+   accuracy_decimals: 2
+   filters:
+    - lambda: return (x * 10);
+   total:
+    name: "Total gas consumption"
+    unit_of_measurement: "m³"
+    device_class: "gas"
+    accuracy_decimals: 2
+    filters:
+      - lambda: return (x * 0.01);
+    
