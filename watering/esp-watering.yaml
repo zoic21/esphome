@@ -306,7 +306,7 @@ switch:
 
 time:
   - platform: sntp
-    servers: 192.168.1.132
+    servers: !secret ntp_ip
     on_time_sync:
       then:
         - logger.log: "Synchronized system clock"
