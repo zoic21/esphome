@@ -1,0 +1,356 @@
+substitutions:
+  ble_scan: 'false'
+  zone_1_cron: '30 20 * * *'
+  zone_1_miflora: C4:7C:8D:63:65:CD
+  zone_2_cron: '30 20 * * *'
+  zone_2_miflora: C4:7C:8D:63:65:CB
+  zone_3_cron: '30 20 * * *'
+  zone_3_miflora: C4:7C:8D:63:65:CA
+
+text_sensor:
+  - platform: version
+    name: "Firmware watering"
+  #- platform: ble_scanner
+  #  name: "BLE Devices Scanner"
+
+esphome:
+  name: esp-watering
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+# Enable logging
+logger:
+
+web_server:
+  port: 80
+  auth:
+   username: admin
+   password: !secret web_server_password
+
+ota:
+  password: !secret ota_password
+
+ethernet:
+  type: LAN8720
+  mdc_pin: GPIO23
+  mdio_pin: GPIO18
+  clk_mode: GPIO17_OUT
+  phy_addr: 0
+  use_address: 192.168.1.133
+  
+mqtt:
+  broker: !secret mqtt_ip
+  username : !secret mqtt_username
+  password : !secret mqtt_password
+  birth_message:
+    topic: esp-watering/status
+    payload: online
+  will_message:
+    topic: esp-watering/status
+    payload: offline
+
+number:
+  - platform: template
+    name : "Zone 1 durée arrosage maximum (min)"
+    id : zone_1_max_watering_duration
+    step : 1
+    min_value : 1
+    max_value : 180
+    optimistic : true
+    restore_value : true
+    initial_value : 30
+  - platform: template
+    name : "Zone 1 humidité minimum"
+    id : zone_1_moisture_min
+    step : 1
+    min_value : 0
+    max_value : 100
+    optimistic : true
+    restore_value : true
+    initial_value : 30
+  - platform: template
+    name : "Zone 1 humidité maximum"
+    id : zone_1_moisture_max
+    step : 1
+    min_value : 0
+    max_value : 100
+    optimistic : true
+    restore_value : true
+    initial_value : 45
+  - platform: template
+    name : "Zone 2 durée arrosage maximum (min)"
+    id : zone_2_max_watering_duration
+    step : 1
+    min_value : 1
+    max_value : 180
+    optimistic : true
+    restore_value : true
+    initial_value : 30
+  - platform: template
+    name : "Zone 2 humidité minimum"
+    id : zone_2_moisture_min
+    step : 1
+    min_value : 0
+    max_value : 100
+    optimistic : true
+    restore_value : true
+    initial_value : 30
+  - platform: template
+    name : "Zone 2 humidité maximum"
+    id : zone_2_moisture_max
+    step : 1
+    min_value : 0
+    max_value : 100
+    optimistic : true
+    restore_value : true
+    initial_value : 45
+  - platform: template
+    name : "Zone 3 durée arrosage maximum (min)"
+    id : zone_3_max_watering_duration
+    step : 1
+    min_value : 1
+    max_value : 180
+    optimistic : true
+    restore_value : true
+    initial_value : 30
+  - platform: template
+    name : "Zone 3 humidité minimum"
+    id : zone_3_moisture_min
+    step : 1
+    min_value : 0
+    max_value : 100
+    optimistic : true
+    restore_value : true
+    initial_value : 30
+  - platform: template
+    name : "Zone 3 humidité maximum"
+    id : zone_3_moisture_max
+    step : 1
+    min_value : 0
+    max_value : 100
+    optimistic : true
+    restore_value : true
+    initial_value : 45
+
+button:
+  - platform: template
+    name : "Zone 1 arrosage manuel"
+    on_press:
+      then:
+        - logger.log: "[Zone1] Manual execution"
+        - if:
+            condition:
+              and:
+                - sensor.in_range:
+                    id: zone_1_rssi
+                    below: 0
+                - lambda : "return id(zone_1_moisture).state < id(zone_1_moisture_min).state;"
+            then: 
+              - logger.log: "[Zone1] Moisture bellow threshold start watering"
+              - switch.turn_on: zone_1_watering
+  - platform: template
+    name : "Zone 2 arrosage manuel"
+    on_press:
+      then:
+        - logger.log: "[Zone2] Manual execution"
+        - if:
+            condition:
+              and:
+                - sensor.in_range:
+                    id: zone_2_rssi
+                    below: 0
+                - lambda : "return id(zone_2_moisture).state < id(zone_2_moisture_min).state;"
+            then: 
+              - logger.log: "[Zone2] Moisture bellow threshold start watering"
+              - switch.turn_on: zone_2_watering
+  - platform: template
+    name : "Zone 3 arrosage manuel"
+    on_press:
+      then:
+        - logger.log: "[Zone3] Manual execution"
+        - if:
+            condition:
+              and:
+                - sensor.in_range:
+                    id: zone_3_rssi
+                    below: 0
+                - lambda : "return id(zone_3_moisture).state < id(zone_3_moisture_min).state;"
+            then: 
+              - logger.log: "[Zone3] Moisture bellow threshold start watering"
+              - switch.turn_on: zone_3_watering
+
+
+esp32_ble_tracker:
+  scan_parameters:
+    active: ${ble_scan}
+
+sensor:
+  - platform: ble_rssi
+    mac_address: ${zone_1_miflora}
+    name: "Zone 1 RSSI"
+    id: zone_1_rssi
+  - platform: xiaomi_hhccjcy01
+    mac_address: ${zone_1_miflora}
+    temperature:
+      name: "Zone 1 Temperature"
+    moisture:
+      name: "Zone 1 Moisture"
+      id : zone_1_moisture
+      on_value_range:
+        - above : !lambda "return id(zone_1_moisture_max).state;"
+          then:
+            - logger.log: "[Zone1] Moisture above threshold stop watering"
+            - switch.turn_off: zone_1_watering
+    illuminance:
+      name: "Zone 1 Illuminance"
+    conductivity:
+      name: "Zone 1 Soil Conductivity"
+  - platform: ble_rssi
+    mac_address: ${zone_2_miflora}
+    name: "Zone 2 RSSI"
+    id: zone_2_rssi
+  - platform: xiaomi_hhccjcy01
+    mac_address: ${zone_2_miflora}
+    temperature:
+      name: "Zone 2 Temperature"
+    moisture:
+      name: "Zone 2 Moisture"
+      id : zone_2_moisture
+      on_value_range:
+        - above : !lambda "return id(zone_2_moisture_max).state;"
+          then:
+            - logger.log: "[Zone2] Moisture above threshold stop watering"
+            - switch.turn_off: zone_2_watering
+    illuminance:
+      name: "Zone 2 Illuminance"
+    conductivity:
+      name: "Zone 2 Soil Conductivity"
+  - platform: ble_rssi
+    mac_address: ${zone_3_miflora}
+    name: "Zone 3 RSSI"
+    id: zone_3_rssi
+  - platform: xiaomi_hhccjcy01
+    mac_address: ${zone_3_miflora}
+    temperature:
+      name: "Zone 3 Temperature"
+    moisture:
+      name: "Zone 3 Moisture"
+      id : zone_3_moisture
+      on_value_range:
+        - above : !lambda "return id(zone_3_moisture_max).state;"
+          then:
+            - logger.log: "[Zone3] Moisture above threshold stop watering"
+            - switch.turn_off: zone_3_watering
+    illuminance:
+      name: "Zone 3 Illuminance"
+    conductivity:
+      name: "Zone 3 Soil Conductivity"
+
+switch:
+  - platform: template
+    name: "Zone 1 programmation"
+    id : zone_1_automatic
+    optimistic : true
+    restore_state : true
+    restore_mode  : RESTORE_DEFAULT_ON
+  - platform: template
+    name: "Zone 2 programmation"
+    id : zone_2_automatic
+    optimistic : true
+    restore_state : true
+    restore_mode  : RESTORE_DEFAULT_ON
+  - platform: template
+    name: "Zone 3 programmation"
+    id : zone_3_automatic
+    optimistic : true
+    restore_state : true
+    restore_mode  : RESTORE_DEFAULT_ON
+  - platform: gpio
+    pin:
+     number: 4
+     inverted: true
+    id: zone_1_watering
+    name: "Arrosage zone 1"
+    restore_mode: ALWAYS_OFF
+    on_turn_on:
+      - logger.log: "[Zone1] Start delay decount"
+      - delay: !lambda "return id(zone_1_max_watering_duration).state * 60000;"
+      - logger.log: "[Zone1] Max watering duration, stop it"
+      - switch.turn_off: zone_1_watering
+  - platform: gpio
+    pin:
+      number: 12
+      inverted: true
+    id: zone_2_watering
+    name: "Arrosage zone 2"
+    restore_mode: ALWAYS_OFF
+    on_turn_on:
+      - logger.log: "[Zone2] Start delay decount"
+      - delay: !lambda "return id(zone_2_max_watering_duration).state * 60000;"
+      - logger.log: "[Zone2] Max watering duration, stop it"
+      - switch.turn_off: zone_2_watering
+  - platform: gpio
+    pin:
+      number: 13
+      inverted: true
+    id: zone_3_watering
+    name: "Arrosage zone 3"
+    restore_mode: ALWAYS_OFF
+    on_turn_on:
+      - logger.log: "[Zone3] Start delay decount"
+      - delay: !lambda "return id(zone_3_max_watering_duration).state * 60000;"
+      - logger.log: "[Zone3] Max watering duration, stop it"
+      - switch.turn_off: zone_3_watering
+
+time:
+  - platform: sntp
+    servers: 192.168.1.132
+    on_time_sync:
+      then:
+        - logger.log: "Synchronized system clock"
+    on_time:
+    - cron: 0 ${zone_1_cron}
+      then:
+        - logger.log: "[Zone1] Cron execution"
+        - if:
+            condition:
+              and:  
+                - switch.is_on: zone_1_automatic
+                - sensor.in_range:
+                    id: zone_1_rssi
+                    below: 0
+                - lambda : "return id(zone_1_moisture).state < id(zone_1_moisture_min).state;"
+            then: 
+              - logger.log: "[Zone1] Moisture bellow threshold start watering"
+              - switch.turn_on: zone_1_watering
+    - cron: 0 ${zone_2_cron}
+      then:
+        - logger.log: "[Zone2] Cron execution"
+        - if:
+            condition:
+              and:  
+                - switch.is_on: zone_2_automatic
+                - sensor.in_range:
+                    id: zone_1_rssi
+                    below: 0
+                - lambda : "return id(zone_2_moisture).state < id(zone_2_moisture_min).state;"
+            then: 
+              - logger.log: "[Zone1] Moisture bellow threshold start watering"
+              - switch.turn_on: zone_2_watering
+    - cron: 0 ${zone_3_cron}
+      then:
+        - logger.log: "[Zone3] Cron execution"
+        - if:
+            condition:
+              and:  
+                - switch.is_on: zone_3_automatic
+                - sensor.in_range:
+                    id: zone_1_rssi
+                    below: 0
+                - lambda : "return id(zone_3_moisture).state < id(zone_3_moisture_min).state;"
+            then: 
+              - logger.log: "[Zone3] Moisture bellow threshold start watering"
+              - switch.turn_on: zone_3_watering
