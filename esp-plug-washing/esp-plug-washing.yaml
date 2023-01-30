@@ -1,0 +1,153 @@
+esphome:
+  name: esp-plug-washing
+
+esp8266:
+  board: esp8285
+  restore_from_flash: true
+
+globals:
+   - id: charge_on
+     type: int
+     restore_value: no
+     initial_value: '0'
+
+logger:
+  level : INFO
+
+mqtt:
+  broker: !secret mqtt_ip
+  username : !secret mqtt_username
+  password : !secret mqtt_password
+
+ota:
+  password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  fast_connect: on
+  ap:
+
+captive_portal:
+
+time:
+  - platform: sntp
+    servers: !secret ntp_ip
+
+web_server:
+  port: 80
+  auth:
+   username: admin
+   password: !secret web_server_password
+
+http_request:
+  useragent: esphome/device
+  timeout: 2s
+
+light:
+  - platform: status_led
+    id: led
+    pin:
+      number: GPIO13
+      inverted: true
+
+binary_sensor:
+  - platform: gpio
+    pin:
+      number: GPIO00
+      mode: INPUT_PULLUP
+    id: "button_state"
+    on_press:
+      - switch.toggle: "button_switch"
+
+switch:
+  - platform: template
+    name: "Switch"
+    optimistic: true
+    id: "button_switch"
+    lambda: |-
+      if (id(relay).state) {
+        return true;
+      } else {
+        return false;
+      }
+    turn_on_action:
+      - switch.turn_on: relay
+      - light.turn_on: led
+    turn_off_action:
+      - switch.turn_off: relay
+      - light.turn_off: led
+  - platform: gpio
+    pin: GPIO14
+    id: relay
+    restore_mode  : RESTORE_DEFAULT_ON
+
+sensor:
+  - platform: total_daily_energy
+    name: "Electric Consumption [kWh]"
+    power_id: "nous_a1t_watt"
+    filters:
+      - multiply: 0.001
+      - delta: 0.01
+    unit_of_measurement: kWh
+
+  - platform: hlw8012
+    sel_pin:
+      number: GPIO12
+      inverted: True
+    cf_pin: GPIO04
+    cf1_pin: GPIO05
+    change_mode_every: 4
+    current_resistor: 0.00280
+    voltage_divider: 775
+    update_interval: 10s
+    power:
+      name: "Power"
+      id: "nous_a1t_watt"
+      unit_of_measurement: W
+      filters:
+        - delta : 1.0
+      on_value_range:
+      - above: 3400
+        then:
+          - switch.turn_off: relay
+          - logger.log: Switch turned off because power exceeded 3400W
+          - http_request.post:
+              url: !secret ntfy_url
+              headers:
+                Content-Type: text/plain
+                Tags: warning,skull
+                Priority: urgent
+                Title: Evenèment
+                Authorization: !secret ntfy_auth
+              verify_ssl: false
+              body: '{"topic":"loic","message":"Prise machine à laver coupée car puissance > 3400W"}'
+      - above: 200
+        then:
+          - globals.set:
+              id: charge_on
+              value: '1'
+      - below: 2
+        then:
+        - if:
+            condition: 
+              - lambda: return id(charge_on) == 1;
+              - for:
+                  time: 2min
+                  condition:
+                    sensor.in_range:
+                      id: nous_a1t_watt
+                      above: 2
+            then:
+              - globals.set:
+                  id: charge_on
+                  value: '0'
+              - http_request.post:
+                  url: !secret ntfy_url
+                  headers:
+                    Content-Type: text/plain
+                    Tags: tada,house
+                    Title: Evenèment
+                    Authorization: !secret ntfy_auth
+                  verify_ssl: false
+                  body: '{"topic":"maison","message":"La machine à laver a terminée"}'
