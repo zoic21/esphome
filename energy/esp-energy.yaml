@@ -6,8 +6,19 @@ esp32:
   framework:
     type: arduino
 
+globals:
+   - id: water_alert
+     type: int
+     restore_value: no
+     initial_value: '0'
+   - id: gaz_alert
+     type: int
+     restore_value: no
+     initial_value: '0'
+
 # Enable logging
 logger:
+  level : INFO
 
 web_server:
   port: 80
@@ -29,12 +40,10 @@ mqtt:
   broker: !secret mqtt_ip
   username : !secret mqtt_username
   password : !secret mqtt_password
-  birth_message:
-    topic: esp-energy/status
-    payload: online
-  will_message:
-    topic: esp-energy/status
-    payload: offline
+  
+http_request:
+  useragent: esphome/device
+  timeout: 2s
 
 text_sensor:
   - platform: version
@@ -71,6 +80,50 @@ sensor:
    accuracy_decimals: 2
    filters:
     - lambda: return x;
+   on_value_range:
+     - bellow: 0
+       then:
+         condition:
+           - lambda: return id(water_alert) == 1;
+         then:
+          - globals.set:
+            id: water_alert
+            value: '0'
+          - logger.log: Alert end for water
+          - http_request.post:
+              url: !secret ntfy_url
+              headers:
+                Content-Type: text/plain
+                Tags: white_check_mark,droplet
+                Priority: default
+                Title: Evenèment
+                Authorization: !secret ntfy_auth
+              verify_ssl: false
+              body: '{"topic":"loic","message":"Fin alerte sur la consommation d\'eau"}'
+     - above: 0
+       then:
+        condition:
+          for:
+            time: 20min
+            condition:
+              sensor.in_range:
+                id: water
+                above: 0
+        then:
+          - globals.set:
+            id: water_alert
+            value: '1'
+          - logger.log: Alert start for water
+          - http_request.post:
+              url: !secret ntfy_url
+              headers:
+                Content-Type: text/plain
+                Tags: warning,droplet
+                Priority: urgent
+                Title: Evenèment
+                Authorization: !secret ntfy_auth
+              verify_ssl: false
+              body: '{"topic":"loic","message":"Alerte sur la consommation d\'eau supérieure à 0 pendant plus de 20min"}'
    total:
     name: "Total water consumption"
     unit_of_measurement: "m³"
@@ -91,6 +144,50 @@ sensor:
    accuracy_decimals: 2
    filters:
     - lambda: return (x * 10);
+   on_value_range:
+     - bellow: 0
+       then:
+         condition:
+           - lambda: return id(gas_alert) == 1;
+         then:
+          - globals.set:
+            id: gas_alert
+            value: '0'
+          - logger.log: Alert end for water
+          - http_request.post:
+              url: !secret ntfy_url
+              headers:
+                Content-Type: text/plain
+                Tags: white_check_mark,droplet
+                Priority: default
+                Title: Evenèment
+                Authorization: !secret ntfy_auth
+              verify_ssl: false
+              body: '{"topic":"loic","message":"Fin alerte sur la consommation de gaz"}'
+     - above: 0
+       then:
+        condition:
+          for:
+            time: 20min
+            condition:
+              sensor.in_range:
+                id: water
+                above: 0
+        then:
+          - globals.set:
+            id: gas_alert
+            value: '1'
+          - logger.log: Alert start for water
+          - http_request.post:
+              url: !secret ntfy_url
+              headers:
+                Content-Type: text/plain
+                Tags: warning,droplet
+                Priority: urgent
+                Title: Evenèment
+                Authorization: !secret ntfy_auth
+              verify_ssl: false
+              body: '{"topic":"loic","message":"Alerte sur la consommation de gaz supérieure à 0 pendant plus de 20min"}'
    total:
     name: "Total gas consumption"
     unit_of_measurement: "m³"
